@@ -1,0 +1,163 @@
+---
+title: "Reproducible Research: Peer Assessment 1"
+output: 
+  html_document:
+    keep_md: true
+---
+```{r}
+library(data.table)
+library(tidyr)
+library(ggplot2)
+library(dplyr)
+```
+
+## Loading and preprocessing the data
+1. If the data file does not exist, unzip the activity.zip to get it.
+2. Read the activity.csv file and convert the data.frame into tibble.
+3. Format the dates in the 2nd column into Date objects.
+```{r}
+filename <- "activity.csv"
+if (!file.exists(filename)){
+    unzip("activity.zip")
+}
+activity <- read.csv(filename)
+activity <- as_tibble(activity)
+activity$date <- as.Date(activity$date, format="%Y-%m-%d")
+```
+
+## What is mean total number of steps taken per day?
+Create histogram with total number of steps:
+```{r}
+activity <- activity %>% 
+    group_by(date) %>% 
+    mutate(total_daily_steps=sum(steps, na.rm=TRUE))
+ggplot(activity, aes(total_daily_steps)) + 
+    geom_histogram(col="magenta", fill="cyan", alpha=3/4, bins=10) + theme_minimal() +
+    labs(x="Total Steps", y="Frequency", title="Histogram for total number of steps")
+```
+
+Mean number of steps per day:
+```{r}
+activity <- activity %>% 
+    group_by(date) %>% 
+    mutate(mean_daily_steps=mean(steps, na.rm=TRUE))
+activity %>% 
+    group_by(date) %>% 
+    select(mean_daily_steps) %>% 
+    distinct() %>% 
+    print(n=Inf)
+```
+
+Median number of steps per day:
+```{r}
+activity <- activity %>% 
+    group_by(date) %>% 
+    mutate(median_daily_steps=median(steps, na.rm=TRUE))
+activity %>% 
+    group_by(date) %>% 
+    select(median_daily_steps) %>% 
+    distinct() %>% 
+    print(n=Inf)
+```
+
+## What is the average daily activity pattern?
+Create time series plot for time intervals:
+```{r}
+activity <- activity %>% 
+    group_by(interval) %>% 
+    mutate(mean_interval_steps=mean(steps, na.rm=TRUE))
+ggplot(activity, aes(interval, mean_interval_steps)) +
+    geom_line(color=rgb(0, 0.7, 0.7)) + 
+#    geom_point(na.rm=TRUE, color=rgb(0, 0.7, 0.7), pch=20) +
+    labs(x="Interval", y="Average steps",
+    title="Time series of average steps per 5-minute interval")
+```
+
+Interval with the maximum average number of steps:
+```{r}
+activity$interval[which.max(activity$mean_interval_steps)]
+```
+
+## Imputing missing values
+Calculate number of rows with missing values (NA):
+```{r}
+sum(is.na(activity$steps))
+```
+
+Calculate percentage of rows with missing values (NA):
+```{r}
+mean(is.na(activity$steps))
+```
+
+Replace NA values for steps with mean_interval_steps values:
+```{r}
+new_activity <- activity %>% 
+    mutate(steps=ifelse(is.na(steps), mean_interval_steps, steps)) 
+```
+
+Recalculate total steps per day for new dataset:
+```{r}
+new_activity <- new_activity %>% 
+    group_by(date) %>% 
+    mutate(total_daily_steps=sum(steps, na.rm=TRUE))
+ggplot(new_activity, aes(total_daily_steps)) + 
+    geom_histogram(col="magenta", fill="cyan", alpha=3/4, bins=10) + theme_minimal() +
+    labs(x="Total Steps", y="Frequency", title="Histogram for total number of steps without NAs")
+```
+
+Recalculate mean number of steps per day for new dataset:
+```{r}
+new_activity <- new_activity %>% 
+    group_by(date) %>% 
+    mutate(mean_daily_steps=mean(steps, na.rm=TRUE))
+new_activity %>% 
+    group_by(date) %>% 
+    select(mean_daily_steps) %>% 
+    distinct() %>% 
+    print(n=Inf)
+```
+
+Recalculate median number of steps per day for new dataset:
+```{r}
+new_activity <- new_activity %>% 
+    group_by(date) %>% 
+    mutate(median_daily_steps=median(steps, na.rm=TRUE))
+new_activity %>% 
+    group_by(date) %>% 
+    select(median_daily_steps) %>% 
+    distinct() %>% 
+    print(n=Inf)
+```
+
+## Are there differences in activity patterns between weekdays and weekends?
+Create a factor for weekday/weekend and add it to the new_activity data:
+```{r}
+new_activity$day <- factor(weekdays(new_activity$date), 
+    levels=c("Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"), 
+    labels=c("weekend", "weekday", "weekday", "weekday", "weekday", "weekday", "weekend"))
+```
+
+Recalculate mean number of steps for each interval and create panel plot for weekday/weekend steps:
+```{r}
+new_activity <- new_activity %>% 
+    group_by(interval, day) %>% 
+    mutate(mean_interval_steps=mean(steps, na.rm=TRUE))
+ggplot(new_activity, aes(interval, mean_interval_steps, color=day)) +
+    geom_line() +
+#    geom_point(na.rm=TRUE, color=rgb(0, 0.7, 0.7), pch=20) +
+    labs(x="Interval", y="Number of steps",
+    title="Time series of average steps per 5-minute interval for weekend/weekday") + 
+    facet_grid(day~.) + theme(legend.position="none")
+```
+
+Clean the session:
+```{r}
+rm(activity)
+rm(new_activity)
+file.remove(filename)
+rm(filename)
+detach("package:data.table", unload=TRUE)
+detach("package:tidyr", unload=TRUE)
+detach("package:ggplot2", unload=TRUE)
+detach("package:dplyr", unload=TRUE)
+```
