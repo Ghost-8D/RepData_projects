@@ -1,0 +1,10 @@
+name: Publish Document
+title:
+username:
+account: rpubs
+server: rpubs.com
+hostUrl: rpubs.com
+appId: https://api.rpubs.com/api/v1/document/650593/9509ec34dd944c37a13bfe92c1a052fb
+bundleId: https://api.rpubs.com/api/v1/document/650593/9509ec34dd944c37a13bfe92c1a052fb
+url: http://rpubs.com/Ghost_8D/650593
+when: 1597862170.29134
