@@ -4,4 +4,4 @@ This repo includes two projects that I had to complete for the Reproducable Rese
 
 Please do not copy this work for the peer assessments of this course. If you want you can check them out to understand what you have to do.
 
-If you just copy you learn nothing. These projects give you hands on experience and you can add them to your ePortfolio if you think they are good.
+If you just copy you will learn nothing. These projects can give you hands on experience and you can add them to your ePortfolio if you think they are good.
