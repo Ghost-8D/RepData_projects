@@ -1,0 +1,249 @@
+---
+title: "Storm Data Analysis and Exploration"
+author: "Panayiotis"
+date: "8/19/2020"
+output: 
+    html_document: 
+        keep_md: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Summary
+In this document we will explore the U.S. National Oceanic and Atmospheric 
+Administration's (NOAA) storm database. The NOAA database tracks characteristics 
+of major storms and weather events in the United States, including when and where 
+they occur, as well as estimates of any fatalities, injuries, and property damage.
+The recorded events in the NOAA database took place between 1950 and 2011. In the 
+earlier years of the database there are generally fewer events recorded, most 
+likely due to a lack of good records, but more recent years should be considered 
+more complete. By analyzing the data, we found that tornadoes are responsible
+for the majority of the deaths (37.2%) and injuries (65%), compared to all the 
+other events that are included in the database. As regards the costs of the 
+damages, we discovered that floods had the greatest economic (most expensive) 
+consequences, surpassing all other events with a significant 31.5% of the total 
+damage costs. However, to make any suggestions we would need to analyse more 
+recent events (2011-2020) as many things have changed since 2011.
+
+## Requirements:
+Load necessary libraries:
+```{r load_libraries}
+library(data.table)
+library(tidyr)
+library(ggplot2)
+library(dplyr)
+library(lubridate)
+library(R.utils)
+```
+
+Display session info:
+```{r session_info, cache=TRUE}
+sessionInfo()
+```
+
+## Data Processing
+1. Read the data from the url, no need to download it.
+2. Convert dataframe to tibble for easier handling.
+3. Convert the BGN_DATE to date object.
+4. Create a new column with the date and time using BGN_DATE and BGN_TIME columns.
+```{r get_data, cache=TRUE}
+url <- "https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2"
+storm_data <- fread(url)
+storm_data <- as_tibble(storm_data)
+storm_data$BGN_DATE <- as.Date(storm_data$BGN_DATE, format="%m/%d/%Y")
+storm_data$Time <- as_datetime(paste(storm_data$BGN_DATE, storm_data$BGN_TIME), 
+                               format="%Y-%m-%d %H%M")
+```
+
+## Exploratory Data Analysis (EDA)
+Let's take a look at the data:
+```{r eda, cache=TRUE}
+str(storm_data)
+summary(storm_data)
+```
+
+## Results
+### Harmful events
+To find which events have the most harmful impact on the population we have to
+use the FATALITIES and INJURIES columns.
+```{r harmful_events, cache=TRUE}
+harmful_events <- storm_data %>% 
+    select(EVTYPE, FATALITIES, INJURIES) %>% 
+    group_by(EVTYPE) %>% 
+    mutate(Total_Fatal=sum(FATALITIES), Total_Inj=sum(INJURIES)) %>% 
+    select(EVTYPE, Total_Fatal, Total_Inj) %>% 
+    distinct() 
+```
+
+Now let's calculate the sum and the percentage of fatalities and injuries, in 
+order to better understand the impact of each event. This is also a form of 
+normalization that is applied on the total values.
+```{r calc_percentages, cache=TRUE}
+sum_fatal <- sum(harmful_events$Total_Fatal)
+fatal_events <- harmful_events %>% 
+    arrange(desc(Total_Fatal), desc(Total_Inj)) %>%
+    mutate(Prop_Fatal=Total_Fatal / sum_fatal * 100)
+
+sum_inj <- sum(harmful_events$Total_Inj)
+injury_events <- harmful_events %>% 
+    arrange(desc(Total_Inj), desc(Total_Fatal)) %>%
+    mutate(Prop_Inj=Total_Inj / sum_inj * 100)
+```
+
+It's time to plot our data! We will use only the top 10 top events according to
+fatalities and injuries, since these are the most harmful events and plotting 
+everything would be too messy and pointless.
+```{r plot_1}
+fatal_events$EVTYPE <- with(fatal_events, reorder(EVTYPE, -Prop_Fatal))
+ggplot(fatal_events[1:10, ], aes(EVTYPE, Prop_Fatal, fill=EVTYPE)) + 
+    geom_bar(stat="identity") + theme_minimal() + 
+    theme(legend.position="none", axis.title.y=element_blank()) +
+    labs(y="Total Fatalities (%)", title="Top 10 Most Fatal Events in USA") +
+    coord_flip() 
+```
+
+The above plot shows the top 10 most fatal event in USA based on the total
+fatalities. In particular, this figure illustrates the percentage of the total
+fatalities that corresponds to each event. As we can see, tornado is clearly the
+one that caused the most deaths with a whouping 37.19%, excessive heat follows 
+with 12.57% and then we have flash flood and heat at 6.46% and 6.19%, respectively.
+
+Below you can see a table with all the corresponding values.
+```{r display_fatalities}
+fatal_events[1:10, c("EVTYPE", "Total_Fatal", "Prop_Fatal")]
+```
+
+```{r plot_2}
+injury_events$EVTYPE <- with(injury_events, reorder(EVTYPE, -Prop_Inj))
+ggplot(injury_events[1:10, ], aes(EVTYPE, Prop_Inj, fill=EVTYPE)) + 
+    geom_bar(stat="identity") + theme_minimal() + 
+    theme(legend.position="none", axis.title.y=element_blank()) +
+    labs(y="Total Injuries (%)", title="Top 10 Events with the Most Injuries in USA") +
+    coord_flip()
+```
+
+The above barplot illustrates the top 10 events that caused the most injuries in
+USE. The values were normalized in order to show the proportions of the total
+injuries that took place for each event. It is obvious that tornado was responsible 
+for the majority of injuries, which corresponds to approximately 65% of the total
+injuries. TSTM wind, flood and excessive heat follow, with 4.95%, 4.83% and 4.64%,
+respectively.
+
+The corresponding values can be found below.
+```{r display_injuries}
+injury_events[1:10, c("EVTYPE", "Total_Inj", "Prop_Inj")]
+```
+
+#### Conclusions about harmful events:
+According the above barplots, it seems that the most harmful event in United States
+is the Tornado, as it is responsible for about 37.2% of fatalities and the massive 
+65% of the total injuries.
+
+### Economic consequences
+Now let's see which events have the most economic consequences. To do that we need
+to check the PROPDMG and PROPDMGEXP columns to get the propert damage expenses and
+the CROPDMG and CROPDMGEXP to get the crop damage expenses. Before adding these
+two types of expenses, we must fist calculate the actual values. 
+
+#### Important assumptions:
+We assume that "+", "-", "-", "?", "0", and "" have exponent 0 which means that 
+the actual value will be equal to the PROPDMG or CROPDMG. For "H", "K", "M", "B" 
+we assume that they correspon to hundreds, thousands, millions and billions, 
+respectively. For the numbers between 1-8 we assume that these represent the 
+exponent with base 10.
+```{r calc_expenses, cache=TRUE}
+calc_value <- function(multiplier, exponent){ 
+    v <- sapply(seq_along(exponent), function(x) switch (exponent[x],
+        "H" = 10^2,
+        "K" = 10^3,
+        "M" = 10^6,
+        "B" = 10^9,
+        "1" = 10,
+        "2" = 10^2,
+        "3" = 10^3,
+        "4" = 10^4,
+        "5" = 10^5,
+        "6" = 10^6,
+        "7" = 10^7,
+        "8" = 10^8,
+        1 
+    ))
+    return(multiplier * v)
+}
+expenses <- storm_data %>%
+    select(EVTYPE, PROPDMG, PROPDMGEXP, CROPDMG, CROPDMGEXP) %>% 
+    group_by(EVTYPE) %>%
+    mutate(prop_expenses=calc_value(PROPDMG, PROPDMGEXP), 
+           crop_expenses=calc_value(CROPDMG, CROPDMGEXP),
+           Total_Expenses=prop_expenses + crop_expenses,
+           Cum_Expenses=sum(Total_Expenses)) %>%
+    select(EVTYPE, Cum_Expenses) %>% 
+    distinct() %>%
+    arrange(desc(Cum_Expenses))
+```
+
+It is better to normalise the expenses values so we will calculate the percentages
+(proportions) as before.
+```{r calc_proportions, cache=TRUE}
+sum_expenses <- sum(expenses$Cum_Expenses)
+costly_events <- expenses %>% 
+    mutate(Prop_Expenses=Cum_Expenses / sum_expenses * 100)
+```
+
+Let's create a plot with the top 10 events with the greatest economic consequences.
+```{r plot_3}
+costly_events$EVTYPE <- with(costly_events, reorder(EVTYPE, -Prop_Expenses))
+ggplot(costly_events[1:10, ], aes(EVTYPE, Prop_Expenses, fill=EVTYPE)) + 
+    geom_bar(stat="identity") + theme_minimal() + 
+    theme(axis.title.x=element_blank(), 
+          axis.ticks.x=element_blank(), axis.text.x=element_blank()) +
+    labs(y="Total Expenses (%)", title="Top 10 Events with the Greatest Economic Consequences in USA")
+```
+
+The above barplot shows the proportions of the total expenses for each type of event.
+More specifically, it shows the top 10 events that had the greatest economic consequences,
+in terms of property and crops damage costs. Clearly, flood caused the most damages
+as it was responsible for approximately 31.50% of the total damages in USA. 
+Hurricane/Typhoon and tornado follow with 15.07% and 12.02%, respectively.
+
+Below you can see the corresponding values used in the barplot.
+```{r display_costs}
+costly_events[1:10, ] 
+```
+
+#### Conclusions about economic consequences:
+Based on the previous plot, it seems that the flood caused the most damages in USA,
+with a 31.5%, which is almost one third of the total damages caused by all
+types of events. With this finding, we could suggest that further measures should
+be taken to protect the properties and crops from flood events, however, further
+analysis should be made to check whether this finding applies for the current decade
+or only for previous decades.
+
+### Cleanup
+Now that we are done let's clean our session:
+```{r cleanup}
+rm(url)
+rm(storm_data)
+rm(harmful_events)
+rm(fatal_events)
+rm(injury_events)
+rm(expenses)
+rm(costly_events)
+rm(sum_expenses)
+rm(sum_fatal)
+rm(sum_inj)
+rm(calc_value)
+detach("package:data.table", unload=TRUE)
+detach("package:tidyr", unload=TRUE)
+detach("package:ggplot2", unload=TRUE)
+detach("package:dplyr", unload=TRUE)
+detach("package:lubridate", unload=TRUE)
+detach("package:R.utils", unload=TRUE)
+```
+
+Let's check if we cleaned everything:
+```{r}
+ls()
+```
